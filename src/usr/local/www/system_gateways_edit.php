@@ -39,11 +39,11 @@ if (isset($_POST['referer'])) {
 
 global $gateway_state_kill_modes;
 
-refresh_gateways_cache(); // make sure we're working on a current gateway list
+refresh_gateways(); // make sure we're working on a current gateway list
 $a_gateways = get_gateways(GW_CACHE_INDEXED);
 
-init_config_arr(array('gateways', 'gateway_item'));
-$a_gateway_item = &$config['gateways']['gateway_item'];
+config_init_path('gateways/gateway_item');
+$a_gateway_item = config_get_path('gateways/gateway_item');
 $dpinger_default = return_dpinger_defaults();
 
 if (is_numericint($_REQUEST['id'])) {
@@ -264,7 +264,7 @@ $section->addInput(new Form_Input(
 // Add a button to provide access to the advanced fields
 $btnadv = new Form_Button(
 	'btnadvopts',
-	'Display Advanced',
+	gettext('Display Advanced'),
 	null,
 	'fa-solid fa-cog'
 );
@@ -470,7 +470,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvopts').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvopts').children();
+		$('#btnadvopts').text(text).prepend(children);
 	}
 
 	$('#btnadvopts').click(function(event) {

@@ -238,7 +238,7 @@ if ($_POST) {
 		}
 	}
 
-	$vlan_supported = !preg_match('/^(lo\d+|gif\d+|gre\d+|ppp\d+|pppoe\d+|pptp\d+|l2tp\d+|enc\d+|ipsec\d+|ovpn[sc]\d+|tun_wg\d+)/i', $input_interface);
+	$vlan_supported = !preg_match('/^(lo\d+|gif\d+|gre\d+|ppp\d+|pppoe\d+|pptp\d+|l2tp\d+|enc\d+|ipsec\d+|ovpn[sc]\d+|tun_wg\d+|tailscale\d+)/i', $input_interface);
 	try {
 		$expression_string = get_expression_string($filterattributes, $vlan_supported);
 	} catch (Exception $e) {
@@ -400,11 +400,10 @@ $form_match_ethertype +=  array(
 	'arp' => '[ARP]'
 );
 $form_match_protocol += array(
-	'icmp' => '[ICMPv4]',
-	'icmp6' => '[ICMPv6]',
+	'ping' => '[Ping]',
+	'ipsec' => '[IPsec]',
 	'tcp' => '[TCP]',
 	'udp' => '[UDP]',
-	'ipsec' => '[IPsec]',
 	'carp' => '[CARP]',
 	'pfsync' => '[pfsync]',
 	'ospf' => '[OSPF]'

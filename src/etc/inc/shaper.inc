@@ -296,6 +296,9 @@ function get_queue_stats() {
 			unset($newqueue);
 			$newqueue = array();
 			$currentqueuename = convert_real_interface_to_friendly_interface_name($items[2]);
+			if (empty($currentqueuename)) {
+				continue;
+			}
 			$currentqueueif = $items[2];
 			$newqueue['name'] = $currentqueuename;
 			$newqueue['interface'] = $items[2];
@@ -325,66 +328,50 @@ function get_queue_stats() {
 	return $result;
 }
 
-/*
- * I admit :) this is derived from xmlparse.inc StartElement()
- */
-function &get_reference_to_me_in_config(&$mypath) {
-	global $config;
-
-	init_config_arr(array('shaper'));
-	$ptr = &$config['shaper'];
+function shaper_config_get_path($mypath) {
+	config_init_path('shaper');
+	$path = 'shaper';
 	foreach ($mypath as $indeks) {
-		if (!is_array($ptr)) {
-			$ptr = array();
-		}
-		if (!is_array($ptr['queue'])) {
-			$ptr['queue'] = array();
-		}
-		if (!is_array($ptr['queue'][$indeks])) {
-			$ptr['queue'][$indeks] = array();
-		}
-		$ptr = &$ptr['queue'][$indeks];
+		$path .= "/queue/{$indeks}";
 	}
 
-	return $ptr;
+	return $path;
 }
 
-function unset_object_by_reference(&$mypath) {
-	global $config;
-
-	init_config_arr(array('shaper'));
-	$ptr = &$config['shaper'];
+function shaper_config_del($mypath) {
+	config_init_path('shaper');
+	$path = 'shaper';
 	for ($i = 0; $i < count($mypath) - 1; $i++) {
-		$ptr = &$ptr['queue'][$mypath[$i]];
+		$path .= "/queue/{$mypath[$i]}";
 	}
-	unset($ptr['queue'][$mypath[$i]]);
+	config_del_path("{$path}/queue/{$mypath[$i]}");
 }
 
-function &get_dn_reference_to_me_in_config(&$mypath) {
-	global $config;
-
-	init_config_arr(array('dnshaper'));
-	$ptr = &$config['dnshaper'];
+function shaper_dn_config_get_path($mypath) {
+	config_init_path('dnshaper');
+	$path = 'dnshaper';
 	foreach ($mypath as $indeks) {
-		$ptr = &$ptr['queue'][$indeks];
+		$path .= "/queue/{$indeks}";
 	}
 
-	return $ptr;
+	return $path;
 }
 
-function unset_dn_object_by_reference(&$mypath) {
-	global $config;
-
-	init_config_arr(array('dnshaper'));
-	$ptr = &$config['dnshaper'];
+function shaper_dn_config_del($mypath) {
+	config_init_path('dnshaper');
+	$path = 'dnshaper';
 	for ($i = 0; $i < count($mypath) - 1; $i++) {
-		$ptr = &$ptr['queue'][$mypath[$i]];
+		$path .= "/queue/{$mypath[$i]}";
 	}
-	unset($ptr['queue'][$mypath[$i]]);
+	config_del_path("{$path}/queue/{$mypath[$i]}");
 }
 
 function clean_child_queues($type, $mypath) {
-	$ref = &get_reference_to_me_in_config($mypath);
+	$ref_path = shaper_config_get_path($mypath);
+	$ref = config_get_path($ref_path);
+	if (empty($ref)) {
+		return;
+	}
 
 	switch ($type) {
 		case 'HFSC':
@@ -459,6 +446,7 @@ function clean_child_queues($type, $mypath) {
 			}
 			break;
 	}
+	config_set_path($ref_path, $ref);
 }
 
 function get_bandwidthtype_scale($type) {
@@ -957,14 +945,14 @@ class altq_root_queue {
 		foreach ($this->queues as $q) {
 			$q->delete_queue();
 		}
-		unset_object_by_reference($this->GetLink());
+		shaper_config_del($this->GetLink());
 	}
 
 	function delete_all() {
 		if (count($this->queues)) {
 			foreach ($this->queues as $q) {
 				$q->delete_all();
-				unset_object_by_reference($q->GetLink());
+				shaper_config_del($q->GetLink());
 				unset($q);
 			}
 			unset($this->queues);
@@ -1070,7 +1058,7 @@ class altq_root_queue {
 	}
 
 	function build_shortform() {
-		global $g;
+		global $shaperIFlist;
 
 		$altq =& $this;
 
@@ -1213,10 +1201,8 @@ class altq_root_queue {
 	 * the same function much like build_rules();
 	 */
 	function wconfig() {
-		$cflink = &get_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['interface'] = $this->GetInterface();
 		$cflink['name'] = $this->GetQname();
 		$cflink['scheduler'] = $this->GetScheduler();
@@ -1234,6 +1220,7 @@ class altq_root_queue {
 		if (empty($cflink['enabled'])) {
 			unset($cflink['enabled']);
 		}
+		config_set_path($cflink_path, $cflink);
 	}
 
 }
@@ -1256,6 +1243,7 @@ class priq_queue {
 	var $qenabled = "";
 	var $qparent;
 	var $link;
+	var $firsttime;
 
 	/* This is here to help with form building and building rules/lists */
 	var $subqueues = array();
@@ -1404,10 +1392,10 @@ class priq_queue {
 		$this->qdefault = $value;
 	}
 	function GetCodel() {
-		return $this->codel;
+		return $this->qcodel;
 	}
 	function SetCodel($codel = false) {
-		$this->codel = $codel;
+		$this->qcodel = $codel;
 	}
 	function GetRed() {
 		return $this->qred;
@@ -1529,14 +1517,14 @@ class priq_queue {
 	function delete_queue() {
 		unref_on_altq_queue_list($this->GetQname());
 		cleanup_queue_from_rules($this->GetQname());
-		unset_object_by_reference($this->GetLink());
+		shaper_config_del($this->GetLink());
 	}
 
 	function delete_all() {
 		if (count($this->subqueues)) {
 			foreach ($this->subqueues as $q) {
 				$q->delete_all();
-				unset_object_by_reference($q->GetLink());
+				shaper_config_del($q->GetLink());
 				unset($q);
 			}
 			unset($this->subqueues);
@@ -1955,10 +1943,8 @@ class priq_queue {
 	}
 
 	function wconfig() {
-		$cflink =& get_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['name'] = $this->GetQname();
 		$cflink['interface'] = $this->GetInterface();
 		$cflink['qlimit'] = trim($this->GetQlimit());
@@ -1997,6 +1983,7 @@ class priq_queue {
 		if (empty($cflink['ecn'])) {
 			unset($cflink['ecn']);
 		}
+		config_set_path($cflink_path, $cflink);
 	}
 }
 
@@ -2241,7 +2228,7 @@ class hfsc_queue extends priq_queue {
 		foreach ($this->subqueues as $q) {
 			$q->delete_queue();
 		}
-		unset_object_by_reference($this->GetLink());
+		shaper_config_del($this->GetLink());
 	}
 
 	/*
@@ -2771,10 +2758,8 @@ EOJS;
 	}
 
 	function wconfig() {
-		$cflink =& get_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['name'] = $this->GetQname();
 		$cflink['interface'] = $this->GetInterface();
 		$cflink['qlimit'] = trim($this->GetQlimit());
@@ -2884,6 +2869,7 @@ EOJS;
 			unset($cflink['upperlimit2']);
 			unset($cflink['upperlimit3']);
 		}
+		config_set_path($cflink_path, $cflink);
 	}
 }
 
@@ -2968,7 +2954,7 @@ class cbq_queue extends priq_queue {
 		if (empty($cflink['borrow'])) {
 			unset($cflink['borrow']);
 		}
-		if (is_array($this->queues)) {
+		if (is_array($this->subqueues)) {
 			$cflinkp['queue'] = array();
 			foreach ($this->subqueues as $q) {
 				$cflink['queue'][$q->GetQname()] = array();
@@ -3010,7 +2996,7 @@ class cbq_queue extends priq_queue {
 		foreach ($this->subqueues as $q) {
 			$q->delete_queue();
 		}
-		unset_object_by_reference($this->GetLink());
+		shaper_config_del($this->GetLink());
 	}
 
 	function validate_input($data, &$input_errors) {
@@ -3189,10 +3175,8 @@ class cbq_queue extends priq_queue {
 	}
 
 	function wconfig() {
-		$cflink =& get_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['interface'] = $this->GetInterface();
 		$cflink['qlimit'] = trim($this->GetQlimit());
 		if (empty($cflink['qlimit'])) {
@@ -3237,6 +3221,7 @@ class cbq_queue extends priq_queue {
 		if (empty($cflink['borrow'])) {
 			unset($cflink['borrow']);
 		}
+		config_set_path($cflink_path, $cflink);
 	}
 }
 
@@ -3292,7 +3277,7 @@ class fairq_queue extends priq_queue {
 	function delete_queue() {
 		unref_on_altq_queue_list($this->GetQname());
 		cleanup_queue_from_rules($this->GetQname());
-		unset_object_by_reference($this->GetLink());
+		shaper_config_del($this->GetLink());
 	}
 
 	function validate_input($data, &$input_errors) {
@@ -3462,10 +3447,8 @@ class fairq_queue extends priq_queue {
 	}
 
 	function wconfig() {
-		$cflink =& get_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['interface'] = $this->GetInterface();
 		$cflink['qlimit'] = trim($this->GetQlimit());
 		if (empty($cflink['qlimit'])) {
@@ -3514,6 +3497,7 @@ class fairq_queue extends priq_queue {
 		if (empty($cflink['hogs'])) {
 			unset($cflink['hogs']);
 		}
+		config_set_path($cflink_path, $cflink);
 	}
 }
 
@@ -3542,6 +3526,7 @@ class dummynet_class {
 	/* mask parameters */
 	var $mask;
 	var $noerror;
+	var $firsttime;
 
 	/* Accessor functions */
 	function SetLink($link) {
@@ -3712,6 +3697,7 @@ class dnpipe_class extends dummynet_class {
 	var $delay;
 	var $qbandwidth = array();
 	var $qbandwidthtype;
+	var $qburst;
 
 	/* Limiter queue patch */
 	var $ecn; // ecn 'on' or 'off'
@@ -3808,7 +3794,7 @@ class dnpipe_class extends dummynet_class {
 		foreach ($this->subqueues as $q) {
 			$q->delete_queue();
 		}
-		unset_dn_object_by_reference($this->GetLink());
+		shaper_dn_config_del($this->GetLink());
 		mwexec("/sbin/dnctl pipe delete " . $this->GetNumber());
 		mwexec("/sbin/dnctl sched delete " . $this->GetNumber());
 	}
@@ -4082,7 +4068,7 @@ class dnpipe_class extends dummynet_class {
 	}
 
 	function build_rules() {
-		global $config, $time_based_rules;
+		global $time_based_rules;
 
 		if ($this->GetEnabled() == "") {
 			return;
@@ -4094,8 +4080,9 @@ class dnpipe_class extends dummynet_class {
 		if (is_array($bandwidth)) {
 			foreach ($bandwidth as $bw) {
 				if ($bw['bwsched'] != "none") {
-					if (is_array($config['schedules']) && is_array($config['schedules']['schedule'])) {
-						foreach (config_get_path('schedules/schedule', []) as $schedule) {
+					$schedules = config_get_path('schedules/schedule');
+					if (is_array($schedules)) {
+						foreach ($schedules as $schedule) {
 							if ($bw['bwsched'] == $schedule['name']) {
 								if (filter_get_time_based_rule_status($schedule)) {
 									/* pipe throughputs must always be an integer, enforce that restriction again here. */
@@ -4217,17 +4204,15 @@ class dnpipe_class extends dummynet_class {
 	}
 
 	function build_javascript() {
-		global $g, $config;
+		global $g;
 
 		$javasr = parent::build_javascript();
 
 		//build list of schedules
 		$schedules = "<option value='none'>none</option>";
-		if (is_array($config['schedules']) && is_array($config['schedules']['schedule'])) {
-			foreach (config_get_path('schedules/schedule', []) as $schedule) {
-				if ($schedule['name'] <> "") {
-					$schedules .= "<option value='{$schedule['name']}'>{$schedule['name']}</option>";
-				}
+		foreach (config_get_path('schedules/schedule', []) as $schedule) {
+			if ($schedule['name'] <> "") {
+				$schedules .= "<option value='{$schedule['name']}'>{$schedule['name']}</option>";
 			}
 		}
 		$bwopt = "";
@@ -4280,17 +4265,13 @@ EOD;
 	// The table has been "Bootstrapped" to match the web design while maintaining compatibility with
 	// with the javascript in this class
 	function build_bwtable() {
-		global $config;
-
 		$bandwidth = $this->GetBandwidth();
 				//build list of schedules
 		$schedules = array();
 		$schedules[] = "none";//leave none to leave rule enabled all the time
-		if (is_array($config['schedules']) && is_array($config['schedules']['schedule'])) {
-			foreach (config_get_path('schedules/schedule', []) as $schedule) {
-				if ($schedule['name'] != "") {
-					$schedules[] = $schedule['name'];
-				}
+		foreach (config_get_path('schedules/schedule', []) as $schedule) {
+			if ($schedule['name'] != "") {
+				$schedules[] = $schedule['name'];
 			}
 		}
 
@@ -4362,16 +4343,14 @@ EOD;
 	}
 
 	function build_form() {
-		global $g, $config, $pipe, $action, $qname;
+		global $g, $pipe, $action, $qname;
 
 		//build list of schedules
 		$schedules = array();
 		$schedules[] = "none";//leave none to leave rule enabled all the time
-		if (is_array($config['schedules']) && is_array($config['schedules']['schedule'])) {
-			foreach (config_get_path('schedules/schedule', []) as $schedule) {
-				if ($schedule['name'] <> "") {
-					$schedules[] = $schedule['name'];
-				}
+		foreach (config_get_path('schedules/schedule', []) as $schedule) {
+			if ($schedule['name'] <> "") {
+				$schedules[] = $schedule['name'];
 			}
 		}
 
@@ -4588,10 +4567,8 @@ EOD;
 		}
 
 	function wconfig() {
-		$cflink =& get_dn_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_dn_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['name'] = $this->GetQname();
 		$cflink['number'] = $this->GetNumber();
 		$cflink['qlimit'] = $this->GetQlimit();
@@ -4645,6 +4622,7 @@ EOD;
 		if ($selectedScheduler["pie_pderand"]) {
 			$cflink['pie_pderand'] = $this->GetPIE_PDERAND();
 		}
+		config_set_path($cflink_path, $cflink);
 		/* End limiter queue patch */
 	}
 
@@ -4731,7 +4709,7 @@ class dnqueue_class extends dummynet_class {
 
 	function delete_queue() {
 		cleanup_dnqueue_from_rules($this->GetQname());
-		unset_dn_object_by_reference($this->GetLink());
+		shaper_dn_config_del($this->GetLink());
 		mwexec("/sbin/dnctl queue delete " . $this->GetNumber());
 	}
 
@@ -4933,19 +4911,16 @@ class dnqueue_class extends dummynet_class {
 	}
 
 	function build_form() {
-		global $g, $config, $pipe, $action, $qname;
+		global $g, $pipe, $action, $qname;
 
 		//build list of schedules
 		$schedules = array();
 		$schedules[] = "none";//leave none to leave rule enabled all the time
-		if (is_array($config['schedules']) && is_array($config['schedules']['schedule'])) {
-			foreach (config_get_path('schedules/schedule', []) as $schedule) {
-				if ($schedule['name'] <> "") {
-					$schedules[] = $schedule['name'];
-				}
+		foreach (config_get_path('schedules/schedule', []) as $schedule) {
+			if ($schedule['name'] <> "") {
+				$schedules[] = $schedule['name'];
 			}
 		}
-
 
 		$sform = new Form();
 		$sform->setAction("firewall_shaper.php");
@@ -5147,10 +5122,8 @@ class dnqueue_class extends dummynet_class {
 	}
 
 	function wconfig() {
-		$cflink =& get_dn_reference_to_me_in_config($this->GetLink());
-		if (!is_array($cflink)) {
-			$cflink = array();
-		}
+		$cflink_path = shaper_dn_config_get_path($this->GetLink());
+		$cflink = config_get_path($cflink_path, []);
 		$cflink['name'] = $this->GetQname();
 		$cflink['number'] = $this->GetNumber();
 		$cflink['qlimit'] = $this->GetQlimit();
@@ -5186,6 +5159,7 @@ class dnqueue_class extends dummynet_class {
 		if ($selectedAQM["pie_pderand"]) {
 			$cflink['pie_pderand'] = $this->GetPIE_PDERAND();
 		}
+		config_set_path($cflink_path, $cflink);
 		/* End limiter queue patch */
 	}
 }
@@ -5310,19 +5284,14 @@ function unref_on_altq_queue_list($qname) {
 }
 
 function read_altq_config() {
-	global $altq_list_queues, $config;
+	global $altq_list_queues;
 	$path = array();
 
-	init_config_arr(array('shaper', 'queue'));
-	$a_int = &$config['shaper']['queue'];
+	config_init_path('shaper/queue');
 
 	$altq_list_queues = array();
 
-	if (!is_array($config['shaper']['queue'])) {
-		return;
-	}
-
-	foreach ($a_int as $key => $conf) {
+	foreach (config_get_path('shaper/queue', []) as $key => $conf) {
 		$int = $conf['interface'];
 		$root = new altq_root_queue();
 		$root->SetInterface($int);
@@ -5346,15 +5315,15 @@ function read_altq_config() {
 }
 
 function read_dummynet_config() {
-	global $dummynet_pipe_list, $config;
+	global $dummynet_pipe_list;
 	$path = array();
 
-	init_config_arr(array('dnshaper', 'queue'));
-	$a_int = &$config['dnshaper']['queue'];
+	config_init_path('dnshaper/queue');
+	$a_int = config_get_path('dnshaper/queue', []);
 
 	$dummynet_pipe_list = array();
 
-	if (!count($config['dnshaper']['queue'])) {
+	if (!count($a_int)) {
 		return;
 	}
 
@@ -5383,7 +5352,7 @@ function read_dummynet_config() {
 }
 
 function get_interface_list_to_show() {
-	global $altq_list_queues, $config;
+	global $altq_list_queues;
 	global $shaperIFlist;
 
 	$tree = "";
@@ -5480,7 +5449,7 @@ function dnpipe_find_nextnumber() {
 }
 
 function filter_generate_dummynet_rules() {
-	global $config, $g, $dummynet_pipe_list;
+	global $g, $dummynet_pipe_list;
 
 	read_dummynet_config();
 
@@ -5552,13 +5521,9 @@ $dn_default_shaper_msg .= sprintf($shaper_msg, gettext("limiter"));
 
 // Check to see if the specified interface has a queue configured
 function interface_has_queue($if) {
-	global $config;
-
-	if ($config['shaper']) {
-		foreach (config_get_path('shaper/queue', []) as $queue) {
-			if ($queue['interface'] === $if) {
-				return true;
-			}
+	foreach (config_get_path('shaper/queue', []) as $queue) {
+		if ($queue['interface'] === $if) {
+			return true;
 		}
 	}
 

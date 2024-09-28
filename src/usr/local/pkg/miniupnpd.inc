@@ -85,13 +85,12 @@
 	}
 
 	function before_form_miniupnpd(&$pkg) {
-		global $config;
 
 	}
 
 	function validate_form_miniupnpd($post, &$input_errors) {
 		if ($post['enable'] && (!$post['enable_upnp'] && !$post['enable_natpmp'])) {
-			$input_errors[] = 'At least one of \'UPnP\' or \'NAT-PMP\' must be allowed';
+			$input_errors[] = 'At least one of \'UPnP IGD\' or \'PCP/NAT-PMP\' must be allowed';
 		}
 		if ($post['iface_array']) {
 			foreach ($post['iface_array'] as $iface) {
@@ -154,7 +153,7 @@
 	}
 
 	function sync_package_miniupnpd() {
-		global $g, $config;
+		global $g;
 		global $input_errors;
 
 		$upnp_config = config_get_path('installedpackages/miniupnpd/config/0');
@@ -237,12 +236,13 @@
 				$config_text .= "secure_mode=yes\n";
 
 				/* set webgui url */
+				$webgui_config = config_get_path('system/webgui');
 				if (!empty($upnp_config['presentationurl'])){
 					$config_text .= "presentation_url=" . $upnp_config['presentationurl'] . "\n";
-				} elseif (!empty($config['system']['webgui']['protocol'])) {
-					$config_text .= "presentation_url={$config['system']['webgui']['protocol']}://{$webgui_ip}";
-					if (!empty($config['system']['webgui']['port'])) {
-						$config_text .= ":{$config['system']['webgui']['port']}";
+				} elseif (!empty($webgui_config['protocol'])) {
+					$config_text .= "presentation_url={$webgui_config['protocol']}://{$webgui_ip}";
+					if (!empty($webgui_config['port'])) {
+						$config_text .= ":{$webgui_config['port']}";
 					}
 					$config_text .= "/\n";
 				}
@@ -280,9 +280,9 @@
 					$config_text .= "queue={$upnp_config['upnpqueue']}\n";
 				}
 
-				/* Allow UPnP or NAT-PMP as requested */
+				/* Allow UPnP IGD or PCP/NAT-PMP as requested */
 				$config_text .= "enable_upnp="   . ($upnp_config['enable_upnp']   ? "yes\n" : "no\n");
-				$config_text .= "enable_natpmp=" . ($upnp_config['enable_natpmp'] ? "yes\n" : "no\n");
+				$config_text .= "enable_pcp_pmp=" . ($upnp_config['enable_natpmp'] ? "yes\n" : "no\n");
 
 				/* STUN configuration */
 				if ($upnp_config['enable_stun']) {

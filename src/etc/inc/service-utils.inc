@@ -59,7 +59,8 @@ function write_rcfile($params) {
 		$tokill = "/usr/bin/killall " . escapeshellarg($params['executable']);
 	} else {
 		/* make an educated guess (bad) */
-		$tokill = array_pop(explode('/', array_shift(explode(' ', $params['start']))));
+		$tokill = explode(' ', $params['start']);
+		$tokill = array_pop(explode('/', array_shift($tokill)));
 	}
 	$towrite .= "rc_stop() {\n";
 	$towrite .= "\t{$tokill}\n";
@@ -456,7 +457,7 @@ function get_services() {
 	if (config_get_path('installedpackages/miniupnpd/config/0/enable') == 'on') {
 		$pconfig = array();
 		$pconfig['name'] = "miniupnpd";
-		$pconfig['description'] = gettext("UPnP Service");
+		$pconfig['description'] = gettext("UPnP IGD & PCP Service");
 		$pconfig['enabled'] = true;
 		$pconfig['status'] = get_service_status($pconfig);
 		$services[] = $pconfig;
@@ -865,7 +866,7 @@ function service_control_stop($name, $extras) {
 				usleep(100000);
 			}
 			/* Make sure sshguard stops as well */
-			sigkillbyname("sshguard", "TERM");
+			system_sshguard_stop();
 			break;
 		default:
 			stop_service($name);

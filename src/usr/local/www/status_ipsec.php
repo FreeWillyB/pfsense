@@ -54,8 +54,6 @@ if ($_REQUEST['ajax']) {
 
 // Table body is composed here so that it can be more easily updated via AJAX
 function print_ipsec_body() {
-	global $config;
-
 	if (!ipsec_enabled()) {
 ?>
 <tr>
@@ -123,7 +121,7 @@ function print_ipsec_body() {
 			}
 		}
 		$p2disconnected = array();
-		if (!$cmap[$ikeid]['p1']['mobile'] &&
+		if (!isset($cmap[$ikeid]['p1']['mobile']) &&
 		    isset($cmap[$ikeid]) &&
 		    is_array($cmap[$ikeid]) &&
 		    is_array($cmap[$ikeid]['p2'])) {

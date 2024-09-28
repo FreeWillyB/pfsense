@@ -46,10 +46,9 @@ $referer = (isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '/firew
 
 $ifdisp = get_configured_interface_with_descr();
 
-init_config_arr(array('filter', 'rule'));
-init_config_arr(array('nat', 'separator'));
-init_config_arr(array('nat', 'rule'));
-$a_nat = config_get_path('nat/rule', []);
+config_init_path('filter/rule');
+config_init_path('nat/separator');
+config_init_path('nat/rule');
 
 if (isset($_REQUEST['id']) && is_numericint($_REQUEST['id'])) {
 	$id = $_REQUEST['id'];
@@ -101,7 +100,7 @@ if ($_POST['save'] && !$input_errors) {
 
 
 function srctype_selected() {
-	global $pconfig, $config;
+	global $pconfig;
 
 	$selected = "";
 	if (array_key_exists($pconfig['src'], build_srctype_list())) {
@@ -120,7 +119,7 @@ function srctype_selected() {
 }
 
 function dsttype_selected() {
-	global $pconfig, $config;
+	global $pconfig;
 
 	$selected = "";
 	if (array_key_exists($pconfig['dst'], build_dsttype_list())) {
@@ -209,7 +208,7 @@ $section->addInput(new Form_Select(
 
 $btnsrcadv = new Form_Button(
 	'btnsrcadv',
-	'Display Advanced',
+	gettext('Display Advanced'),
 	null,
 	'fa-solid fa-cog'
 );
@@ -429,13 +428,13 @@ $section->addInput(new Form_Select(
 	)
 ));
 
-if (isset($id) && $a_nat[$id] && (!isset($_POST['dup']) || !is_numericint($_POST['dup']))) {
+if (isset($id) && config_get_path("nat/rule/{$id}") && (!isset($_POST['dup']) || !is_numericint($_POST['dup']))) {
 
 	$hlpstr = '';
 	$rulelist = array('' => gettext('None'), 'pass' => gettext('Pass'));
 	$rule_association = 'associated-rule-id';
 
-	if (is_array($config['filter']['rule'])) {
+	if (is_array(config_get_path('filter/rule'))) {
 		filter_rules_sort();
 
 		foreach (config_get_path('filter/rule', []) as $filter_id => $filter_rule) {
@@ -476,9 +475,9 @@ $section->addInput(new Form_Select(
 
 $form->add($section);
 
-gen_created_updated_fields($form, $a_nat[$id]['created'], $a_nat[$id]['updated']);
+gen_created_updated_fields($form, config_get_path("nat/rule/{$id}/created"), config_get_path("nat/rule/{$id}/updated"));
 
-if (isset($id) && $a_nat[$id]) {
+if (isset($id) && config_get_path("nat/rule/{$id}")) {
 	$form->addGlobal(new Form_Input(
 		'id',
 		null,
@@ -669,7 +668,11 @@ events.push(function() {
 
 	function dst_change(iface, old_iface, old_dst) {
 		if ((old_dst == "") || (old_iface.concat("ip") == old_dst)) {
-			$('#dsttype').val(iface + "ip");
+			if ($("#dsttype option[value='" + iface + "ip" + "']").length > 0) {
+				$('#dsttype').val(iface + "ip");
+			} else {
+				$('#dsttype').val("single");
+			}
 		}
 	}
 
@@ -682,7 +685,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Hide Advanced');?>";
 		}
-		$('#btnsrcadv').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnsrcadv').children();
+		$('#btnsrcadv').text(text).prepend(children);
 	}
 
 	// ---------- "onclick" functions ---------------------------------------------------------------------------------

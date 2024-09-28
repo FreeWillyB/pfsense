@@ -19,11 +19,9 @@
  * limitations under the License.
  */
 
-global $config;
+config_read_file(true);
 
-$config = parse_config(true);
-
-$config['system']['webgui']['nohttpreferercheck'] = true;
+config_set_path('system/webgui/nohttpreferercheck', true);
 
 echo "Disabling HTTP referer check...";
 

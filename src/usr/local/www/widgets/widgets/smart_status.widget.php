@@ -33,9 +33,9 @@ require_once("/usr/local/www/widgets/include/smart_status.inc");
 $specplatform = system_identify_specific_platform();
 
 $devs = array();
-## Get all adX, daX, and adaX (IDE, SCSI, and AHCI) devices currently installed
+## Get all disks currently installed
 if ($specplatform['name'] != "Hyper-V") {
-	$devs = get_smart_drive_list();
+	$devs = get_drive_list();
 }
 
 if ($_POST['widgetkey']) {
@@ -81,8 +81,8 @@ if (count($devs) > 0)  {
 		}
 
 		$smartdrive_is_displayed = true;
-		$dev_ident = exec("/usr/sbin/diskinfo -v /dev/$dev | /usr/bin/grep ident   | /usr/bin/awk '{print $1}'"); ## get identifier from drive
-		$dev_state = trim(exec("/usr/local/sbin/smartctl -H /dev/$dev | /usr/bin/awk -F: '/^SMART overall-health self-assessment test result/ {print $2;exit}
+		$dev_ident = exec("/usr/sbin/diskinfo -v /dev/{$dev} | /usr/bin/grep ident   | /usr/bin/awk '{print $1}'"); ## get identifier from drive
+		$dev_state = trim(exec("/usr/local/sbin/smartctl -H /dev/{$dev} | /usr/bin/awk -F: '/^SMART overall-health self-assessment test result/ {print $2;exit}
 /^SMART Health Status/ {print $2;exit}'")); ## get SMART state from drive
 		switch ($dev_state) {
 			case "PASSED":

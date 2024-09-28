@@ -19,11 +19,9 @@
  * limitations under the License.
  */
 
-global $config;
+config_read_file(true);
 
-$config = parse_config(true);
-
-unset($config['dhcpd']);
+config_del_path('dhcpd');
 
 echo "Disabling DHCP Server on all interfaces...";
 

@@ -69,6 +69,12 @@ $icmplookup = array(
 	'inet46' => array('name' => 'IPv4+6', 'icmptypes' => $icmptypes46, 'helpmsg' => sprintf(gettext('For ICMP rules on IPv4+IPv6, one or more of these ICMP subtypes may be specified. (Other ICMP subtypes are only valid under IPv4 %1$sor%2$s IPv6, not both)'), '<i>', '</i>'))
 );
 
+$statepolicy_values = [
+	''  => gettext('Use global default'),
+	'if-bound' => gettext('Interface Bound States'),
+	'floating' => gettext('Floating States'),
+];
+
 $statetype_values = array(
 	'keep state' => gettext('Keep'),
 	'sloppy state' => gettext('Sloppy'),
@@ -119,6 +125,7 @@ function is_aoadv_used($rule_config) {
 	    ($rule_config['tcpflags2'] != "") ||
 	    ($rule_config['tcpflags_any']) ||
 	    ($rule_config['nopfsync']) ||
+	    ($rule_config['statepolicy'] != "") ||
 	    (($rule_config['statetype'] != "") && ($rule_config['statetype'] != "keep state")) ||
 	    ($rule_config['nosync']) ||
 	    ($rule_config['vlanprio'] != "") ||
@@ -160,7 +167,7 @@ if (count($ostypes) > 2) {
 
 $ifdisp = get_configured_interface_with_descr();
 
-init_config_arr(array('filter', 'rule'));
+config_init_path('filter/rule');
 filter_rules_sort();
 $a_filter = config_get_path('filter/rule', []);
 
@@ -203,10 +210,6 @@ if (isset($id) && $a_filter[$id]) {
 		if (isset($a_filter[$id]['interface']) && $a_filter[$id]['interface'] <> "") {
 			$pconfig['interface'] = explode(",", $a_filter[$id]['interface']);
 		}
-	}
-
-	if (isset($a_filter['floating'])) {
-		$pconfig['floating'] = "yes";
 	}
 
 	if (isset($a_filter[$id]['direction'])) {
@@ -284,6 +287,7 @@ if (isset($id) && $a_filter[$id]) {
 	$pconfig['max-src-nodes'] = $a_filter[$id]['max-src-nodes'];
 	$pconfig['max-src-conn'] = $a_filter[$id]['max-src-conn'];
 	$pconfig['max-src-states'] = $a_filter[$id]['max-src-states'];
+	$pconfig['statepolicy'] = $a_filter[$id]['statepolicy'];
 	$pconfig['statetype'] = $a_filter[$id]['statetype'];
 	$pconfig['statetimeout'] = $a_filter[$id]['statetimeout'];
 	$pconfig['nopfsync'] = isset($a_filter[$id]['nopfsync']);
@@ -325,6 +329,7 @@ if (isset($id) && $a_filter[$id]) {
 	$pconfig['src'] = "any";
 	$pconfig['dst'] = "any";
 }
+
 /* Allow the FloatingRules to work */
 $if = $pconfig['interface'];
 
@@ -363,7 +368,12 @@ if ($_POST['save']) {
 
 	// add validation + input error for $_POST['interface']
 
-	$valid = ($_POST['interface'] == "FloatingRules" || isset($_POST['floating'])) ? ['pass','block','reject', 'match'] : ['pass','block','reject'];
+	if ($_POST['interface'] == 'FloatingRules' || isset($_POST['floating'])) {
+		$valid = ['pass', 'block', 'reject', 'match'];
+	} else {
+		$valid = ['pass', 'block', 'reject'];
+	}
+
 	if (!(is_string($_POST['type'])  && in_array($_POST['type'], $valid))) {
 		$input_errors[] = gettext("A valid rule type is not selected.");
 		unset($_POST['type']);
@@ -828,6 +838,9 @@ if ($_POST['save']) {
 	if ($_POST['tagged'] && !is_validaliasname($_POST['tagged'])) {
 		$input_errors[] = gettext("Invalid tagged value.");
 	}
+	if ($_POST['statepolicy'] && !array_key_exists($_POST['statepolicy'], $statepolicy_values)) {
+		$input_errors[] = gettext("Invalid State Policy.");
+	}
 	if ($_POST['statetype'] && !array_key_exists($_POST['statetype'], $statetype_values)) {
 		$input_errors[] = gettext("Invalid State Type.");
 	}
@@ -863,8 +876,8 @@ if ($_POST['save']) {
 
 		$filterent['type'] = $_POST['type'];
 
-		if (isset($_POST['floating']) && (!isset($_POST['interface']) ||
-		    in_array('any', $_POST['interface']))) {
+		if (isset($_POST['floating']) &&
+		    (!isset($_POST['interface']) || in_array('any', $_POST['interface']))) {
 			$_POST['interface'] = array('any');
 		} else {
 			$filterent['interface'] = $_POST['interface'];
@@ -929,6 +942,7 @@ if ($_POST['save']) {
 		$filterent['max-src-conn'] = $_POST['max-src-conn'];
 		$filterent['max-src-states'] = $_POST['max-src-states'];
 		$filterent['statetimeout'] = $_POST['statetimeout'];
+		$filterent['statepolicy'] = $_POST['statepolicy'];
 		$filterent['statetype'] = $_POST['statetype'];
 		$filterent['os'] = $_POST['os'];
 		if ($_POST['nopfsync'] <> "") {
@@ -1052,7 +1066,7 @@ if ($_POST['save']) {
 
 		if (isset($id) && $a_filter[$id]) {
 			$tmpif = $filterent['interface'];
-			if (($tmpif == $if) || (isset($pconfig['floating']))) {
+			if (($tmpif == $if) || isset($pconfig['floating'])) {
 				$a_filter[$id] = $filterent;
 			} else {							// rule moved to different interface
 				// update the previous interface's separators
@@ -1106,9 +1120,9 @@ if ($_POST['save']) {
 		}
 
 		if (isset($_POST['floating'])) {
-			header("Location: firewall_rules.php?if=FloatingRules");
+			header('Location: firewall_rules.php?if=FloatingRules');
 		} else {
-			header("Location: firewall_rules.php?if=" . htmlspecialchars($_POST['interface']));
+			header('Location: firewall_rules.php?if=' . htmlspecialchars($_POST['interface']));
 		}
 		exit;
 	}
@@ -1158,7 +1172,9 @@ function build_flag_table() {
 $pgtitle = array(gettext("Firewall"), gettext("Rules"));
 $pglinks = array("");
 
-if ($if == "FloatingRules" || isset($pconfig['floating'])) {
+$is_floating_rule = (($if === 'FloatingRules') || isset($pconfig['floating']));
+
+if ($is_floating_rule) {
 	$pglinks[] = "firewall_rules.php?if=FloatingRules";
 	$pgtitle[] = gettext('Floating');
 	$pglinks[] = "firewall_rules.php?if=FloatingRules";
@@ -1223,7 +1239,7 @@ $values = array(
 	'reject' => gettext('Reject'),
 );
 
-if ($if == "FloatingRules" || isset($pconfig['floating'])) {
+if ($is_floating_rule) {
 	$values['match'] = gettext('Match');
 }
 
@@ -1246,7 +1262,7 @@ $section->addInput(new Form_Checkbox(
 ))->setHelp('Set this option to disable this rule without removing it from the '.
 	'list.');
 
-if ($if == "FloatingRules" || isset($pconfig['floating'])) {
+if ($is_floating_rule) {
 	$section->addInput(new Form_Checkbox(
 		'quick',
 		'Quick',
@@ -1292,7 +1308,7 @@ if ($edit_disabled) {
 	}
 }
 
-if ($if == "FloatingRules" || isset($pconfig['floating'])) {
+if ($is_floating_rule) {
 	$section->addInput($input = new Form_Select(
 		'interface',
 		'*Interface',
@@ -1309,7 +1325,7 @@ if ($if == "FloatingRules" || isset($pconfig['floating'])) {
 	))->setHelp('Choose the interface from which packets must come to match this rule.');
 }
 
-if ($if == "FloatingRules" || isset($pconfig['floating'])) {
+if ($is_floating_rule) {
 	$section->addInput(new Form_Select(
 		'direction',
 		'*Direction',
@@ -1466,6 +1482,7 @@ foreach (['src' => gettext('Source'), 'dst' => gettext('Destination')] as $type 
 
 	$group->addClass(($type == 'src') ? 'srcprtr':'dstprtr');
 	$section->add($group);
+
 	$form->add($section);
 }
 
@@ -1485,12 +1502,12 @@ $section->addInput(new Form_Input(
 	'text',
 	$pconfig['descr']
 ))->setHelp('A description may be entered here for administrative reference. ' .
-	'A maximum of %s characters will be used in the ruleset and displayed in the firewall log.',
+	'A maximum of %s characters will be used in the ruleset label and displayed in the firewall log.',
 	user_rule_descr_maxlen());
 
 $btnadv = new Form_Button(
 	'btnadvopts',
-	'Display Advanced',
+	gettext('Display Advanced'),
 	null,
 	'fa-solid fa-cog'
 );
@@ -1628,6 +1645,16 @@ $section->addInput(new Form_Checkbox(
 ));
 
 $section->addInput(new Form_Select(
+	'statepolicy',
+	'State Policy',
+	(isset($pconfig['statepolicy'])) ? $pconfig['statepolicy'] : "",
+	$statepolicy_values
+))->setHelp('Optionally overrides the default state policy behavior to force a specific policy ' .
+		'for connections matching this rule. Only effective when rules keep state.%1$s' .
+		'The global default policy option is located at System > Advanced, Firewall &amp; NAT tab.',
+		'<br />');
+
+$section->addInput(new Form_Select(
 	'statetype',
 	'State type',
 	(isset($pconfig['statetype'])) ? $pconfig['statetype'] : "keep state",
@@ -1681,8 +1708,7 @@ foreach (get_gateways() as $gwname => $gw) {
 
 foreach ((array)$a_gatewaygroups as $gwg_name => $gwg_data) {
 	$gwjson = $gwjson . "," .'{"name":' . json_encode($gwg_name) . ', "gateway":' .
-	json_encode($gwg_data['name'] . $gwg_name . (empty($gwg_data['descr'])? '' : ' - '. $gwg_data['descr'])) . ',"family":' .
-	json_encode($gwg_data['ipprotocol']) . '}';
+	json_encode($gwg_data['name'] . $gwg_name . (empty($gwg_data['descr'])? '' : ' - '. $gwg_data['descr'])) . ',"family":' . json_encode($gwg_data['ipprotocol']) . '}';
 	$firstgw = false;
 }
 
@@ -1786,7 +1812,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvopts').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvopts').children();
+		$('#btnadvopts').text(text).prepend(children);
 	}
 
 	$('#btnadvopts').click(function(event) {
@@ -1858,8 +1885,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-
-		$('#btnsrctoggle').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnsrctoggle').children();
+		$('#btnsrctoggle').text(text).prepend(children);
 	}
 
 	function typesel_change() {
@@ -2085,7 +2112,7 @@ events.push(function() {
 	});
 
 	$('#icmptype\\[\\]').on('change', function() {
-			icmptype_change();
+		icmptype_change();
 	});
 
 	$('#tcpflags_any').click(function () {

@@ -93,10 +93,10 @@ function print_states($tracker_start, $tracker_end = -1) {
 	$rules = get_pf_rules($rulescnt, $tracker_start, $tracker_end);
 	if (is_array($rules)) {
 		foreach ($rules as $rule) {
+			$evaluations += $rule['evaluations'];
+			$packets += $rule['packets'];
 			$bytes += $rule['bytes'];
 			$states += $rule['states'];
-			$packets += $rule['packets'];
-			$evaluations += $rule['evaluations'];
 			$stcreations += $rule['state creations'];
 			if (strlen($rulesid) > 0) {
 				$rulesid .= ",";
@@ -111,37 +111,36 @@ function print_states($tracker_start, $tracker_end = -1) {
 	}
 	$trackertext .= "<br />";
 
-	printf("<a href=\"diag_dump_states.php?ruleid=%s\" " .
+	$title = (gettext('States details'));
+	$href = ('diag_dump_states.php?ruleid=' . $rulesid);
+	printf("<a href=\"%s\" " .
 	    "data-toggle=\"popover\" data-trigger=\"hover focus\" " .
-	    "title=\"%s\" ", $rulesid, gettext("States details"));
+	    "title=\"%s\" ", $href, $title);
 	printf("data-content=\"{$trackertext}evaluations: %s<br />packets: " .
-	    "%s<br />bytes: %s<br />states: %s<br />state creations: " .
-	    "%s\" data-html=\"true\" usepost>",
-	    format_number($evaluations), format_number($packets),
-	    format_bytes($bytes), format_number($states),
+	    "%s<br />bytes: %s<br />", format_number($evaluations), format_number($packets),
+	    format_bytes($bytes));
+	printf("states: %s<br />state creations: %s", format_number($states),
 	    format_number($stcreations));
+	printf("\" data-html=\"true\" usepost>");
 	printf("%s/%s</a><br />", format_number($states), format_bytes($bytes));
 }
 
 function delete_nat_association($id) {
-	global $config;
-
-	if (!$id || !is_array($config['nat']['rule'])) {
+	$a_nat = config_get_path('nat/rule');
+	if (!$id || !is_array($a_nat)) {
 		return;
 	}
-
-	$a_nat = &$config['nat']['rule'];
 
 	foreach ($a_nat as &$natent) {
 		if ($natent['associated-rule-id'] == $id) {
 			$natent['associated-rule-id'] = '';
 		}
 	}
+	config_set_path('nat/rule', $a_nat);
 }
 
-init_config_arr(array('filter', 'rule'));
+config_init_path('filter/rule');
 filter_rules_sort();
-$a_filter = &$config['filter']['rule'];
 
 if ($_REQUEST['if']) {
 	$if = $_REQUEST['if'];
@@ -169,7 +168,7 @@ if ($_POST['apply']) {
 }
 
 if ($_POST['act'] == "del") {
-	if ($a_filter[$_POST['id']]) {
+	if (config_get_path("filter/rule/{$_POST['id']}")) {
 		// separators must be updated before the rule is removed
 		$ridx = get_interface_ruleindex($if, $_POST['id']);
 		$a_separators = config_get_path('filter/separator/' . strtolower($if), []);
@@ -177,10 +176,10 @@ if ($_POST['act'] == "del") {
 		config_set_path('filter/separator/' . strtolower($if), $a_separators);
 
 		// remove the rule
-		if (!empty($a_filter[$_POST['id']]['associated-rule-id'])) {
-			delete_nat_association($a_filter[$_POST['id']]['associated-rule-id']);
+		if (!empty(config_get_path("filter/rule/{$_POST['id']}/associated-rule-id"))) {
+			delete_nat_association(config_get_path("filter/rule/{$_POST['id']}/associated-rule-id"));
 		}
-		unset($a_filter[$_POST['id']]);
+		config_del_path("filter/rule/{$_POST['id']}");
 
 		if (write_config(gettext("Firewall: Rules - deleted a firewall rule."))) {
 			mark_subsystem_dirty('filter');
@@ -214,8 +213,8 @@ if (isset($_POST['del_x'])) {
 			shift_separators($a_separators, $ridx['index'], true);
 
 			// remove the rule
-			delete_nat_association($a_filter[$rulei]['associated-rule-id']);
-			unset($a_filter[$rulei]);
+			delete_nat_association(config_get_path("filter/rule/{$rulei}/associated-rule-id"));
+			config_del_path("filter/rule/{$rulei}");
 			$removed = true;
 		}
 		config_set_path('filter/separator/' . strtolower($if), $a_separators);
@@ -232,10 +231,10 @@ if (isset($_POST['del_x'])) {
 } elseif (isset($_POST['toggle_x'])) {
 	if (is_array($_POST['rule']) && count($_POST['rule'])) {
 		foreach ($_POST['rule'] as $rulei) {
-			if (isset($a_filter[$rulei]['disabled'])) {
-				unset($a_filter[$rulei]['disabled']);
+			if (config_path_enabled("filter/rule/{$rulei}", 'disabled')) {
+				config_del_path("filter/rule/{$rulei}/disabled");
 			} else {
-				$a_filter[$rulei]['disabled'] = true;
+				config_set_path("filter/rule/{$rulei}/disabled", true);
 			}
 		}
 		if (write_config(gettext("Firewall: Rules - toggle selected firewall rules."))) {
@@ -246,12 +245,12 @@ if (isset($_POST['del_x'])) {
 		exit;
 	}
 } else if ($_POST['act'] == "toggle") {
-	if ($a_filter[$_POST['id']]) {
-		if (isset($a_filter[$_POST['id']]['disabled'])) {
-			unset($a_filter[$_POST['id']]['disabled']);
+	if (config_get_path("filter/rule/{$_POST['id']}")) {
+		if (config_path_enabled("filter/rule/{$_POST['id']}", 'disabled')) {
+			config_del_path("filter/rule/{$_POST['id']}/disabled");
 			$wc_msg = gettext('Firewall: Rules - enabled a firewall rule.');
 		} else {
-			$a_filter[$_POST['id']]['disabled'] = true;
+			config_set_path("filter/rule/{$_POST['id']}/disabled", true);
 			$wc_msg = gettext('Firewall: Rules - disabled a firewall rule.');
 		}
 		if (write_config($wc_msg)) {
@@ -264,14 +263,13 @@ if (isset($_POST['del_x'])) {
 } else if ($_POST['order-store']) {
 	$updated = false;
 	$dirty = false;
-
 	/* update rule order, POST[rule] is an array of ordered IDs */
 	if (is_array($_POST['rule']) && !empty($_POST['rule'])) {
 		$a_filter_new = array();
 
 		// Include the rules of other interfaces listed in config before this (the selected) interface.
 		$filteri_before = null;
-		foreach ($a_filter as $idx => $filterent) {
+		foreach (config_get_path('filter/rule', []) as $idx => $filterent) {
 			if (($filterent['interface'] == $if && !isset($filterent['floating'])) || (isset($filterent['floating']) && "FloatingRules" == $if)) {
 				$filteri_before = $idx;
 				break;
@@ -283,11 +281,11 @@ if (isset($_POST['del_x'])) {
 		// Include the rules of this (the selected) interface.
 		// If a rule is not in POST[rule], it has been deleted by the user
 		foreach ($_POST['rule'] as $id) {
-			$a_filter_new[] = $a_filter[$id];
+			$a_filter_new[] = config_get_path("filter/rule/{$id}");
 		}
 
 		// Include the rules of other interfaces listed in config after this (the selected) interface.
-		foreach ($a_filter as $filteri_after => $filterent) {
+		foreach (config_get_path('filter/rule', []) as $filteri_after => $filterent) {
 			if ($filteri_before > $filteri_after) {
 				continue;
 			}
@@ -298,8 +296,8 @@ if (isset($_POST['del_x'])) {
 			}
 		}
 
-		if ($a_filter !== $a_filter_new) {
-			$a_filter = $a_filter_new;
+		if (config_get_path('filter/rule') !== $a_filter_new) {
+			config_set_path('filter/rule', $a_filter_new);
 			$dirty = true;
 		}
 	}
@@ -344,7 +342,7 @@ if (isset($_POST['del_x'])) {
 	 * https://redmine.pfsense.org/issues/13507 */
 	$tracker = (int)microtime(true);
 	foreach ($_POST['rule'] as $rulei) {
-		$filterent = $a_filter[$rulei];
+		$filterent = config_get_path("filter/rule/{$rulei}");
 		$filterent['tracker'] = $tracker++;
 		$filterent['interface'] = $_POST['dstif'];
 		if (($_POST['convertif'] == 'true') && ($if != $_POST['dstif']) &&
@@ -366,7 +364,7 @@ if (isset($_POST['del_x'])) {
 				$filterent['destination']['network'] = $_POST['dstif'] . 'ip';
 			}
 		}
-		$a_filter[] = $filterent;
+		config_set_path('filter/rule/', $filterent);
 	}
 	if (write_config(gettext("Firewall: Rules - copying selected firewall rules."))) {
 		mark_subsystem_dirty('filter');
@@ -376,7 +374,7 @@ if (isset($_POST['del_x'])) {
 	exit;
 }
 
-$tab_array = array(array(gettext("Floating"), ("FloatingRules" == $if), "firewall_rules.php?if=FloatingRules"));
+$tab_array[] = [gettext('Floating'), ($if === 'FloatingRules'), 'firewall_rules.php?if=FloatingRules'];
 
 foreach ($iflist as $ifent => $ifname) {
 	$tab_array[] = array($ifname, ($ifent == $if), "firewall_rules.php?if={$ifent}");
@@ -414,24 +412,24 @@ $showantilockout = false;
 $showprivate = false;
 $showblockbogons = false;
 
-if (!isset($config['system']['webgui']['noantilockout']) &&
-    (((count($config['interfaces']) > 1) && ($if == 'lan')) ||
-    ((count($config['interfaces']) == 1) && ($if == 'wan')))) {
+if (!config_path_enabled('system/webgui', 'noantilockout') &&
+    (((count(config_get_path('interfaces', [])) > 1) && ($if == 'lan')) ||
+    ((count(config_get_path('interfaces', [])) == 1) && ($if == 'wan')))) {
 	$showantilockout = true;
 }
 
-if (isset($config['interfaces'][$if]['blockpriv'])) {
+if (config_path_enabled("interfaces/{$if}", "blockpriv")) {
 	$showprivate = true;
 }
 
-if (isset($config['interfaces'][$if]['blockbogons'])) {
+if (config_path_enabled("interfaces/{$if}", "blockbogons")) {
 	$showblockbogons = true;
 }
 
-if (isset($config['system']['webgui']['roworderdragging'])) {
-	$rules_header_text = gettext("Rules");
+if (config_path_enabled('system/webgui', 'roworderdragging')) {
+	$rules_header_text = gettext('Rules');
 } else {
-	$rules_header_text = gettext("Rules (Drag to Change Order)");
+	$rules_header_text = gettext('Rules (Drag to Change Order)');
 }
 
 /* Load the counter data of each pf rule. */
@@ -442,7 +440,7 @@ $columns_in_table = 13;
 
 /* Floating rules tab has one extra column
  * https://redmine.pfsense.org/issues/10667 */
-if ($if == "FloatingRules") {
+if ($if === 'FloatingRules') {
 	$columns_in_table++;
 }
 
@@ -471,24 +469,20 @@ if (isset($if)):
 					<tr>
 						<th><input type="checkbox" id="selectAll" name="selectAll" /></th>
 						<th><!-- status icons --></th>
-						<th><?=gettext("States")?></th>
-				<?php
-					if ('FloatingRules' == $if) {
-				?>
-						<th><?=gettext("Interfaces")?></th>
-				<?php
-					}
-				?>
-						<th><?=gettext("Protocol")?></th>
-						<th><?=gettext("Source")?></th>
-						<th><?=gettext("Port")?></th>
-						<th><?=gettext("Destination")?></th>
-						<th><?=gettext("Port")?></th>
-						<th><?=gettext("Gateway")?></th>
-						<th><?=gettext("Queue")?></th>
-						<th><?=gettext("Schedule")?></th>
-						<th><?=gettext("Description")?></th>
-						<th><?=gettext("Actions")?></th>
+						<th><?=gettext('States')?></th>
+<?php if ($if === 'FloatingRules'): ?>
+						<th><?=gettext('Interfaces')?></th>
+<?php endif; ?>
+						<th><?=gettext('Protocol')?></th>
+						<th><?=gettext('Source')?></th>
+						<th><?=gettext('Port')?></th>
+						<th><?=gettext('Destination')?></th>
+						<th><?=gettext('Port')?></th>
+						<th><?=gettext('Gateway')?></th>
+						<th><?=gettext('Queue')?></th>
+						<th><?=gettext('Schedule')?></th>
+						<th><?=gettext('Description')?></th>
+						<th><?=gettext('Actions')?></th>
 					</tr>
 				</thead>
 
@@ -571,9 +565,16 @@ $seprows = separator_rows($separators);
  * See https://redmine.pfsense.org/issues/12174 */
 $gateways_status = return_gateways_status(true);
 
-foreach ($a_filter as $filteri => $filterent):
+global $user_settings;
+$show_system_alias_popup = (array_key_exists('webgui', $user_settings) && !$user_settings['webgui']['disablealiaspopupdetail']);
+$system_alias_specialnet = get_specialnet('', [SPECIALNET_IFNET, SPECIALNET_GROUP]);
+config_init_path('schedules/schedule');
+$a_schedules = config_get_path('schedules/schedule');
+$if_config = config_get_path('interfaces');
+foreach (config_get_path('filter/rule', []) as $filteri => $filterent):
 
-	if (($filterent['interface'] == $if && !isset($filterent['floating'])) || (isset($filterent['floating']) && "FloatingRules" == $if)) {
+	if (($filterent['interface'] == $if && !isset($filterent['floating'])) ||
+	    (isset($filterent['floating']) && $if === 'FloatingRules')) {
 
 		// Display separator(s) for section beginning at rule n
 		if ($seprows[$nrules]) {
@@ -618,7 +619,8 @@ foreach ($a_filter as $filteri => $filterent):
 			print '<i class="fa-solid fa-tasks" title="'. gettext("traffic is logged") .'" style="cursor: pointer;"></i>';
 		}
 
-		if (isset($filterent['direction']) && ($if == "FloatingRules")) {
+		if (isset($filterent['direction']) &&
+		    ($if == "FloatingRules")) {
 			if ($filterent['direction'] == 'in') {
 				print '<i class="fa-regular fa-circle-left" title="'. gettext("direction is in") .'" style="cursor: pointer;"></i>';
 			} elseif ($filterent['direction'] == 'out') {
@@ -636,8 +638,6 @@ foreach ($a_filter as $filteri => $filterent):
 		);
 
 		//build Schedule popup box
-		init_config_arr(array('schedules', 'schedule'));
-		$a_schedules = &$config['schedules']['schedule'];
 		$schedule_span_begin = "";
 		$schedule_span_end = "";
 		$sched_caption_escaped = "";
@@ -645,7 +645,7 @@ foreach ($a_filter as $filteri => $filterent):
 		$schedstatus = false;
 		$dayArray = array (gettext('Mon'), gettext('Tues'), gettext('Wed'), gettext('Thur'), gettext('Fri'), gettext('Sat'), gettext('Sun'));
 		$monthArray = array (gettext('January'), gettext('February'), gettext('March'), gettext('April'), gettext('May'), gettext('June'), gettext('July'), gettext('August'), gettext('September'), gettext('October'), gettext('November'), gettext('December'));
-		if ($config['schedules']['schedule'] != "" && is_array($config['schedules']['schedule'])) {
+		if ($a_schedules != "" && is_array($a_schedules)) {
 			$idx = 0;
 			foreach ($a_schedules as $schedule) {
 				if (!empty($schedule['name']) &&
@@ -777,9 +777,9 @@ foreach ($a_filter as $filteri => $filterent):
 			}
 		}
 	?>
-				<td><?php print_states(intval($filterent['tracker'])); ?></td>
+				<td><?php print_states(intval($filterent['tracker']), -1); ?></td>
 	<?php
-		if ($if == 'FloatingRules') {
+		if ($if === 'FloatingRules') {
 	?>
 			<td onclick="fr_toggle(<?=$nrules;?>)" id="frd<?=$nrules;?>" ondblclick="document.location='firewall_rules_edit.php?id=<?=$i;?>';">
 	<?php
@@ -887,6 +887,10 @@ foreach ($a_filter as $filteri => $filterent):
 								<a href="/firewall_aliases_edit.php?id=<?=$alias['src']?>" data-toggle="popover" data-trigger="hover focus" title="<?=gettext('Alias details')?>" data-content="<?=alias_info_popup($alias['src'])?>" data-html="true">
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($filterent['source'])))?>
 								</a>
+							<?php elseif ($show_system_alias_popup && array_key_exists($filterent['source']['network'], $system_alias_specialnet)): ?>
+								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=system_alias_info_popup($filterent['source']['network'])?>" data-html="true">
+									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($filterent['source'], $filter_srcdsttype_flags)))?>
+								</a>
 							<?php else: ?>
 								<?=htmlspecialchars(pprint_address($filterent['source'], $filter_srcdsttype_flags))?>
 							<?php endif; ?>
@@ -904,6 +908,10 @@ foreach ($a_filter as $filteri => $filterent):
 							<?php if (isset($alias['dst'])): ?>
 								<a href="/firewall_aliases_edit.php?id=<?=$alias['dst']?>" data-toggle="popover" data-trigger="hover focus" title="<?=gettext('Alias details')?>" data-content="<?=alias_info_popup($alias['dst'])?>" data-html="true">
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($filterent['destination'])))?>
+								</a>
+							<?php elseif ($show_system_alias_popup && array_key_exists($filterent['destination']['network'], $system_alias_specialnet)): ?>
+								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=system_alias_info_popup($filterent['destination']['network'])?>" data-html="true">
+									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($filterent['destination'], $filter_srcdsttype_flags)))?>
 								</a>
 							<?php else: ?>
 								<?=htmlspecialchars(pprint_address($filterent['destination'], $filter_srcdsttype_flags))?>
@@ -938,8 +946,8 @@ foreach ($a_filter as $filteri => $filterent):
 							<?php else: ?>
 								<span>
 							<?php endif; ?>
-								<?php if (isset($config['interfaces'][$filterent['gateway']]['descr'])): ?>
-									<?=str_replace('_', '_<wbr>', htmlspecialchars($config['interfaces'][$filterent['gateway']]['descr']))?>
+								<?php if (isset($if_config[$filterent['gateway']]['descr'])): ?>
+									<?=str_replace('_', '_<wbr>', htmlspecialchars($if_config[$filterent['gateway']]['descr']))?>
 								<?php else: ?>
 									<?=htmlspecialchars(pprint_port($filterent['gateway']))?>
 								<?php endif; ?>
@@ -1009,8 +1017,8 @@ foreach ($seprows as $idx => $sep) {
 <?php if ($nrules == 0): ?>
 	<div class="alert alert-warning" role="alert">
 		<p>
-		<?php if ($_REQUEST['if'] == "FloatingRules"): ?>
-			<?=gettext("No floating rules are currently defined.");?>
+		<?php if ($if === 'FloatingRules'): ?>
+			<?=gettext('No floating rules are currently defined.');?>
 		<?php else: ?>
 			<?=gettext("No rules are currently defined for this interface");?><br />
 			<?=gettext("All incoming connections on this interface will be blocked until pass rules are added.");?>
@@ -1037,7 +1045,7 @@ foreach ($seprows as $idx => $sep) {
 			<i class="fa-solid fa-ban icon-embed-btn"></i>
 			<?=gettext("Toggle"); ?>
 		</button>
-		<?php if ($if != 'FloatingRules'):?>
+		<?php if ($if !== 'FloatingRules'):?>
 		<button id="copy_x" name="copy_x" type="button" class="btn btn-primary btn-sm" value="<?=gettext("Copy selected rules"); ?>" disabled title="<?=gettext('Copy selected rules')?>" data-toggle="modal" data-target="#rulescopy">
 			<i class="fa-regular fa-clone icon-embed-btn"></i>
 			<?=gettext("Copy"); ?>
@@ -1224,7 +1232,7 @@ events.push(function() {
 		$(this).removeClass().addClass("fa-solid fa-anchor");
 	});
 
-<?php if(!isset($config['system']['webgui']['roworderdragging'])): ?>
+<?php if(!config_path_enabled('system/webgui', 'roworderdragging')): ?>
 	// Make rules sortable. Hiding the table before applying sortable, then showing it again is
 	// a work-around for very slow sorting on FireFox
 	$('table tbody.user-entries').hide();

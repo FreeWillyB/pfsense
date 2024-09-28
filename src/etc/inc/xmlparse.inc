@@ -34,15 +34,15 @@ function listtags() {
 	$ret = array(
 		'acls', 'alias', 'aliasurl', 'allowedip', 'allowedhostname', 'authserver',
 		'bridged', 'build_port_path',
-		'ca', 'cacert', 'cert', 'crl', 'clone', 'config', 
+		'ca', 'cacert', 'cert', 'crl', 'clone', 'config',
 		'container', 'columnitem', 'checkipservice',
 		'depends_on_package', 'disk', 'dnsserver', 'dnsupdate', 'domainoverrides', 'dyndns',
 		'earlyshellcmd', 'element', 'encryption-algorithm-option',
 		'field', 'fieldname',
 		'gateway_item', 'gateway_group', 'gif', 'gre', 'group',
 		'hash-algorithm-option', 'hosts', 'ifgroupentry', 'igmpentry', 'interface_array', 'item', 'key',
-		'lagg', 'lbaction', 'lbpool', 'l7rules', 'lbprotocol',
-		'member', 'menu', 'tab', 'mobilekey', 'monitor_type', 'mount',
+		'lagg', 'laggroup', 'lbaction', 'lbpool', 'l7rules', 'lbprotocol',
+		'member', 'menu', 'tab', 'mobilekey', 'mobilegroup', 'monitor_type', 'mount',
 		'npt', 'ntpserver',
 		'onetoone', 'openvpn-server', 'openvpn-client', 'openvpn-csc', 'option',
 		'package', 'passthrumac', 'phase1', 'phase2', 'ppp', 'pppoe', 'priv', 'proxyarpnet', 'pool',
@@ -58,8 +58,11 @@ function listtags() {
 
 /* Package XML tags that should be treated as a list not as a traditional array */
 function listtags_pkg() {
-	$ret = array('build_port_path', 'depends_on_package', 'onetoone', 'queue', 'rule', 'servernat', 'alias', 'additional_files_needed', 'tab', 'template', 'menu', 'rowhelperfield', 'service', 'step', 'package', 'columnitem', 'option', 'item', 'field', 'package', 'file');
-
+	$ret = array(
+		'additional_files_needed', 'alias', 'build_port_path', 'class', 'columnitem', 'depends_on_package',
+		'field', 'file', 'item', 'menu', 'onetoone', 'option', 'package', 'queue', 'rowhelperfield', 'rule', 'servernat',
+		'service', 'step', 'tab', 'template'
+	);
 	return array_flip($ret);
 }
 
@@ -125,7 +128,7 @@ function endElement($parser, $name) {
 	if (isset($listtags[strtolower($name)])) {
 		array_pop($curpath);
 	}
-	
+
 	$depth--;
 }
 
@@ -235,7 +238,7 @@ function is_cdata_entity($ent) {
 		'descr', 'detail', 'email', 'encryption_password', 'hint', 'ldap_attr',
 		'ldap_authcn', 'ldap_basedn', 'ldap_basedomain', 'ldap_bind', 'ldapbinddn',
 		'ldapbindpass', 'ldap_extended_query', 'ldap_filter', 'ldap_pam_groupdn', 'ldap_pass', 'ldap_user',
-		'login_banner', 'organization', 'password', 'rangedescr', 'state', 'text',
+		'login_banner', 'organization', 'password', 'proxypass', 'proxyuser', 'rangedescr', 'state', 'text',
 		'username', 'varusersusername', 'varuserspassword'
 	);
 
@@ -261,13 +264,13 @@ function dump_xml_config_sub($arr, $indent) {
 					if (is_array($cval)) {
 						if (empty($cval)) {
 							$xmlconfig .= str_repeat("\t", $indent);
-							$xmlconfig .= "<$ent></$ent>\n";
+							$xmlconfig .= "<{$ent}></{$ent}>\n";
 						} else {
 							$xmlconfig .= str_repeat("\t", $indent);
-							$xmlconfig .= "<$ent>\n";
+							$xmlconfig .= "<{$ent}>\n";
 							$xmlconfig .= dump_xml_config_sub($cval, $indent + 1);
 							$xmlconfig .= str_repeat("\t", $indent);
-							$xmlconfig .= "</$ent>\n";
+							$xmlconfig .= "</{$ent}>\n";
 						}
 					} else {
 						if ($cval === false) {
@@ -275,35 +278,35 @@ function dump_xml_config_sub($arr, $indent) {
 						}
 						$xmlconfig .= str_repeat("\t", $indent);
 						if ((is_bool($cval) && $cval == true) || ($cval === "")) {
-							$xmlconfig .= "<$ent></$ent>\n";
+							$xmlconfig .= "<{$ent}></{$ent}>\n";
 						} else if (is_cdata_entity($ent)) {
-							$xmlconfig .= "<$ent><![CDATA[" . htmlentities($cval) . "]]></$ent>\n";
+							$xmlconfig .= "<{$ent}><![CDATA[" . htmlentities($cval) . "]]></{$ent}>\n";
 						} else {
-							$xmlconfig .= "<$ent>" . htmlentities($cval) . "</$ent>\n";
+							$xmlconfig .= "<{$ent}>" . htmlentities($cval) . "</{$ent}>\n";
 						}
 					}
 				}
 			} else if (empty($val)) {
 				$xmlconfig .= str_repeat("\t", $indent);
-				$xmlconfig .= "<$ent></$ent>\n";
+				$xmlconfig .= "<{$ent}></{$ent}>\n";
 			} else {
 				/* it's an array */
 				$xmlconfig .= str_repeat("\t", $indent);
-				$xmlconfig .= "<$ent>\n";
+				$xmlconfig .= "<{$ent}>\n";
 				$xmlconfig .= dump_xml_config_sub($val, $indent + 1);
 				$xmlconfig .= str_repeat("\t", $indent);
-				$xmlconfig .= "</$ent>\n";
+				$xmlconfig .= "</{$ent}>\n";
 			}
 		} else {
 			if ((is_bool($val) && ($val == true)) || ($val === "")) {
 				$xmlconfig .= str_repeat("\t", $indent);
-				$xmlconfig .= "<$ent></$ent>\n";
+				$xmlconfig .= "<{$ent}></{$ent}>\n";
 			} else if (!is_bool($val)) {
 				$xmlconfig .= str_repeat("\t", $indent);
 				if (is_cdata_entity($ent)) {
-					$xmlconfig .= "<$ent><![CDATA[" . htmlentities($val) . "]]></$ent>\n";
+					$xmlconfig .= "<{$ent}><![CDATA[" . htmlentities($val) . "]]></{$ent}>\n";
 				} else {
-					$xmlconfig .= "<$ent>" . htmlentities($val) . "</$ent>\n";
+					$xmlconfig .= "<{$ent}>" . htmlentities($val) . "</{$ent}>\n";
 				}
 			}
 		}
@@ -337,11 +340,11 @@ function dump_xml_config_pkg($arr, $rootobj) {
 function dump_xml_config_raw($arr, $rootobj) {
 
 	$xmlconfig = "<?xml version=\"1.0\"?" . ">\n";
-	$xmlconfig .= "<$rootobj>\n";
+	$xmlconfig .= "<{$rootobj}>\n";
 
 	$xmlconfig .= dump_xml_config_sub($arr, 1);
 
-	$xmlconfig .= "</$rootobj>\n";
+	$xmlconfig .= "</{$rootobj}>\n";
 
 	return $xmlconfig;
 }

@@ -41,8 +41,8 @@ require_once("vpn.inc");
 
 global $p1_authentication_methods;
 
-init_config_arr(array('ipsec', 'phase1'));
-init_config_arr(array('ipsec', 'phase2'));
+config_init_path('ipsec/phase1');
+config_init_path('ipsec/phase2');
 
 $items_deleted = false;
 
@@ -60,12 +60,12 @@ if ($_POST['apply']) {
 } else if (isset($_POST['del'])) {
 	/* delete selected p1 entries */
 	if (is_array($_POST['p1entry']) && count($_POST['p1entry'])) {
-		foreach ($_POST['p1entry'] as $p1entrydel) {
-			config_del_path('ipsec/phase1/' . $p1entrydel);
-			$items_deleted = true;
-		}
-		if (write_config(gettext("Deleted selected IPsec Phase 1 entries."))) {
-			mark_subsystem_dirty('ipsec');
+		$delcount = delete_p1_and_children($_POST['p1entry']);
+
+		if ($delcount > 0) {
+			if (write_config(gettext("Deleted selected IPsec Phase 1 and related Phase 2 entries."))) {
+				mark_subsystem_dirty('ipsec');
+			}
 		}
 	}
 } else if (isset($_POST['delp2'])) {
@@ -79,8 +79,10 @@ if ($_POST['apply']) {
 				$items_deleted = true;
 			}
 		}
-		if (write_config(gettext("Deleted selected IPsec Phase 2 entries."))) {
-			mark_subsystem_dirty('ipsec');
+		if ($items_deleted) {
+			if (write_config(gettext("Deleted selected IPsec Phase 2 entries."))) {
+				mark_subsystem_dirty('ipsec');
+			}
 		}
 	}
 } else  {
@@ -171,7 +173,7 @@ if ($_POST['apply']) {
 		/* copy all p2 entries > $movebtnp2 and not selected */
 		for ($i = $movebtnp2+1; $i < count(config_get_path('ipsec/phase2', [])); $i++) {
 			if (!in_array($i, $_POST['p2entry'])) {
-				$a_phase2_new[] = config_get_path('ipsec/phase2/', $i);
+				$a_phase2_new[] = config_get_path('ipsec/phase2/' . $i);
 			}
 		}
 		if (count($a_phase2_new) > 0) {
@@ -187,7 +189,7 @@ if ($_POST['apply']) {
 				$ikeid = config_get_path('ipsec/phase1/' . $togglebtn . '/ikeid');
 				$p1_has_vti = false;
 				$disablep2ids = array();
-				foreach (config_get_path('ipsec/phase2') as $p2index => $ph2tmp) {
+				foreach (config_get_path('ipsec/phase2', []) as $p2index => $ph2tmp) {
 					if ($ph2tmp['ikeid'] == $ikeid) {
 						if (is_interface_ipsec_vti_assigned($ph2tmp)) {
 							$p1_has_vti = true;
@@ -220,35 +222,15 @@ if ($_POST['apply']) {
 			}
 		}
 	} else if (isset($delbtn)) {
-		/* remove static route if interface is not WAN */
-		if (config_get_path('ipsec/phase1/' . $delbtn . '/interface') <> "wan") {
-			route_del(config_get_path('ipsec/phase1/' . $delbtn . '/remote-gateway'));
-		}
+		$delcount = delete_p1_and_children([$delbtn]);
 
-		/* remove all phase2 entries that match the ikeid */
-		$ikeid = config_get_path('ipsec/phase2/' . $delbtn . '/ikeid');
-		$p1_has_vti = false;
-		$delp2ids = array();
-		foreach (config_get_path('ipsec/phase2') as $p2index => $ph2tmp) {
-			if ($ph2tmp['ikeid'] == $ikeid) {
-				if (is_interface_ipsec_vti_assigned($ph2tmp)) {
-					$p1_has_vti = true;
-				} else {
-					$delp2ids[] = $p2index;
-				}
+		if ($delcount > 0) {
+			/* Use a better description than generic save below */
+			$save = 0;
+			if (write_config(gettext("Deleted selected IPsec Phase 1 and related Phase 2 entries."))) {
+				mark_subsystem_dirty('ipsec');
 			}
 		}
-
-		if ($p1_has_vti) {
-			$input_errors[] = gettext("Cannot delete a Phase 1 which contains an active VTI Phase 2 with an interface assigned. Remove the interface assignment before deleting this P1.");
-		} else {
-			foreach ($delp2ids as $dp2idx) {
-				config_del_path('ipsec/phase2/' . $dp2idx);
-			}
-			config_del_path('ipsec/phase1/' . $delbtn);
-			$items_deleted = true;
-		}
-
 	} else if (isset($delbtnp2)) {
 		if (is_interface_ipsec_vti_assigned(config_get_path('ipsec/phase2/' . $delbtnp2)) && (config_get_path('ipsec/phase2/' . $delbtnp2 . '/mode') == 'vti')) {
 			$input_errors[] = gettext("Cannot delete a VTI Phase 2 while the interface is assigned. Remove the interface assignment before deleting this P2.");
@@ -291,6 +273,9 @@ if ($_POST['apply']) {
 if (is_subsystem_dirty('ipsec')) {
 	print_apply_box(gettext("The IPsec tunnel configuration has been changed.") . "<br />" . gettext("The changes must be applied for them to take effect."));
 }
+global $user_settings;
+$show_alias_popup = (array_key_exists('webgui', $user_settings) && !$user_settings['webgui']['disablealiaspopupdetail']);
+$ipsec_specialnet = get_specialnet('', [SPECIALNET_IFSUB]);
 ?>
 
 <form name="mainform" method="post">
@@ -315,7 +300,7 @@ if (is_subsystem_dirty('ipsec')) {
 				</thead>
 				<tbody class="p1-entries">
 <?php
-$iflabels = get_configured_interface_with_descr(false, true);
+$iflabels = get_configured_interface_with_descr(true);
 $viplist = get_configured_vip_list();
 foreach ($viplist as $vip => $address) {
 	$iflabels[$vip] = $address;
@@ -468,7 +453,7 @@ $i = 0; foreach (config_get_path('ipsec/phase1', []) as $ph1ent):
 <?php
 				$phase2count=0;
 
-				foreach (config_get_path('ipsec/phase2') as $ph2ent) {
+				foreach (config_get_path('ipsec/phase2', []) as $ph2ent) {
 					if ($ph2ent['ikeid'] != $ph1ent['ikeid']) {
 						continue;
 					}
@@ -497,7 +482,7 @@ $i = 0; foreach (config_get_path('ipsec/phase1', []) as $ph1ent):
 										</tr>
 									</thead>
 									<tbody class="p2-entries">
-<?php $j = 0; foreach (config_get_path('ipsec/phase2') as $ph2index => $ph2ent): ?>
+<?php $j = 0; foreach (config_get_path('ipsec/phase2', []) as $ph2index => $ph2ent): ?>
 <?php
 						if ($ph2ent['ikeid'] != $ph1ent['ikeid']) {
 							continue;
@@ -529,7 +514,13 @@ $i = 0; foreach (config_get_path('ipsec/phase1', []) as $ph1ent):
 											</td>
 <?php if (($ph2ent['mode'] == "tunnel") or ($ph2ent['mode'] == "tunnel6") or ($ph2ent['mode'] == "vti")): ?>
 											<td id="<?=$fr_d?>" onclick="fr_toggle('<?=$j?>', '<?=$fr_prefix?>')">
-												<?=ipsec_idinfo_to_text($ph2ent['localid']); ?>
+												<?php if ($show_alias_popup && !empty($ph2ent['localid']) && array_key_exists($ph2ent['localid']['type'], $ipsec_specialnet)): ?>
+													<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('Subnet details')?>" data-content="<?=ipsec_idinfo_to_cidr($ph2ent['localid'], false, $ph2ent['mode'])?>" data-html="true">
+														<?=str_replace('_', '_<wbr>', htmlspecialchars($ipsec_specialnet[$ph2ent['localid']['type']]))?>
+													</a>
+												<?php else: ?>
+													<?=ipsec_idinfo_to_text($ph2ent['localid']); ?>
+												<?php endif; ?>
 											</td>
 											<td id="<?=$fr_d?>" onclick="fr_toggle('<?=$j?>', '<?=$fr_prefix?>')">
 												<?=ipsec_idinfo_to_text($ph2ent['remoteid']); ?>

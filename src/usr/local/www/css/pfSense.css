@@ -145,15 +145,7 @@ tr.disabled a {
     width: 105px;
 }
 
-.logo-st0 {
-    fill:#FFFFFF;
-}
-
-.logo-st1 {
-    fill:#FFFFFF;
-}
-
-.logo-st2 {
+.logo-st0, .logo-st1, .logo-st2, .logo-st3, .logo-st4, .logo-st5 {
     fill:#FFFFFF;
 }
 
@@ -208,6 +200,11 @@ tr.disabled a {
 
 .nav-pills {
     margin-bottom: 20px;
+}
+
+.dropdown-menu-fixed {
+    max-height: calc(98vh - 35px);
+    overflow-y: auto;
 }
 
 .dropdown-menu>li>a {

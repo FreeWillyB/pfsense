@@ -43,7 +43,7 @@ $pgtitle = array(gettext("Status"), gettext("Queues"));
 $shortcut_section = "trafficshaper";
 include("head.inc");
 
-if (!isset($config['shaper']['queue']) || !is_array($config['shaper']['queue']) || count($config['shaper']['queue']) < 1) {
+if (count(config_get_path('shaper/queue', [])) < 1) {
 	print_info_box(gettext("Traffic shaping is not configured."));
 	include("foot.inc");
 	exit;
@@ -250,7 +250,7 @@ else: ?>
 				<tbody>
 <?php
 	$if_queue_list = get_configured_interface_list_by_realif(true);
-	processInterfaceQueues($stats, 0, "");
+	processInterfaceQueues($stats, "");
 ?>
 <?php endif; ?>
 				</tbody>
@@ -286,9 +286,10 @@ function processInterfaceQueues($altqstats, $parent_name) {
 	global $g;
 	global $if_queue_list;
 
-	$parent_name = $parent_name . " queuerow" . $altqstats['name'] . convert_real_interface_to_friendly_interface_name($altqstats['interface']);
+	$interface_friendlyname = convert_real_interface_to_friendly_interface_name($altqstats['interface']);
+	$parent_name = $parent_name . " queuerow" . $altqstats['name'] . $interface_friendlyname;
 	$prev_if = $altqstats['interface'];
-	if (!is_array($altqstats['interfacestats'])) {
+	if (empty($interface_friendlyname) || !is_array($altqstats['interfacestats'])) {
 		print("<tr><td>");
 		print("No Queue data available");
 		print("</td></tr>");
@@ -325,7 +326,7 @@ function processInterfaceQueues($altqstats, $parent_name) {
 			$qname = str_replace($q['interface'], $qfinterface, $q['name']);
 ?>
 			<tr class="<?=$parent_name;?>">
-				<td class="<?=$row_class?>" style="padding-left:<?=$level * 20?>px;">
+				<td class="alert_default" style="padding-left:<?=$level * 20?>px;">
 					<?php
 					if (is_array($q['contains'])) {
 						echo "<a href=\"#\" onclick=\"StatsShowHide('queuerow{$qname}{$qfinterface}');return false\">+/-</a>";
@@ -355,7 +356,7 @@ function processInterfaceQueues($altqstats, $parent_name) {
 			</tr>
 <?php
 			if (is_array($q['queue'])) {
-				processInterfaceQueues($q, $level + 1, $parent_name);
+				processInterfaceQueues($q, $parent_name);
 			}
 		}
 	};

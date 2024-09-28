@@ -44,7 +44,7 @@ if ($_REQUEST['ajax']) {
 	// the support data file does not exist, or
 	// if it is more than a day old and the URL seems resolvable
 	if (!file_exists($supportfile) ||
-	    ((time()-filemtime($supportfile) > $refreshinterval) && is_url_hostname_resolvable($FQDN))) {
+	    ((time()-filemtime($supportfile) > $refreshinterval) && resolve_address($FQDN))) {
 		if (file_exists($supportfile)) {
 			unlink($supportfile);
 		}
@@ -74,7 +74,7 @@ if ($_REQUEST['act'] == "refresh") {
 // Poll the Netgate server to obtain the JSON/HTML formatted support information
 // and write it to the JSON file
 function updateSupport() {
-	global $g, $supportfile, $idfile, $FQDN, $config;
+	global $g, $supportfile, $idfile, $FQDN;
 
 	if (file_exists($idfile)) {
 		if (function_exists('curl_version')) {
@@ -93,7 +93,7 @@ function updateSupport() {
 			set_curlproxy($ch);
 
 			$response = curl_exec($ch);
-			$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			$status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 			curl_close($ch);
 
 			if ($status == 200) {

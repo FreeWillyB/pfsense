@@ -61,8 +61,7 @@ function getAdvancedAdminConfig($json = false) {
 	$pconfig['sshguard_detection_time'] = config_get_path('system/sshguard_detection_time', '');
 	$pconfig['sshguard_whitelist'] = config_get_path('system/sshguard_whitelist', '');
 	$pconfig['interfaces_lan'] = config_get_path('interfaces/lan');
-	$a_cert = config_get_path('cert', []);
-	$pconfig['certsavailable'] = (is_array($a_cert) && count($a_cert));
+	$pconfig['certsavailable'] = count(config_get_path('cert', [])) > 0;
 	if (!$pconfig['webguiproto'] || !$pconfig['certsavailable']) {
 		$pconfig['webguiproto'] = 'http';
 	}
@@ -378,6 +377,7 @@ function doAdvancedAdminPOST($post, $json = false) {
 		$retval = 0;
 		$retval |= filter_configure();
 		if ($restart_sshguard) {
+			system_sshguard_stop();
 			$retval |= system_syslogd_start(true);
 		}
 

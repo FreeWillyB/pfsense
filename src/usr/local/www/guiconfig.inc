@@ -389,7 +389,7 @@ function get_std_save_message($retval) {
 		$to_return = gettext("The changes have been applied successfully.");
 	} else {
 		// non-zero means there was some problem
-		$to_return = sprintf(gettext('There was a problem applying the changes. See the %1$sSystem Logs%2$s.'), '<a href="status_logs.php">', '</a>');
+		$to_return = sprintf(gettext('There was a problem applying the changes. See the %1$sSystem Logs%2$s.'), '<a href="/status_logs.php">', '</a>');
 	}
 	foreach ($filter_pages as $fp) {
 		if (stristr($_SERVER['SCRIPT_FILENAME'], $fp)) {
@@ -398,7 +398,7 @@ function get_std_save_message($retval) {
 	}
 	if ($filter_related) {
 		$to_return .= " " . gettext("The firewall rules are now reloading in the background.") . "<br />" .
-		    sprintf(gettext('%1$sMonitor%2$s the filter reload progress.'), "<a href='status_filter_reload.php'>", "</a>");
+		    sprintf(gettext('%1$sMonitor%2$s the filter reload progress.'), "<a href='/status_filter_reload.php'>", "</a>");
 	}
 	return $to_return;
 }
@@ -510,11 +510,14 @@ function firewall_check_for_advanced_options(&$item) {
 	if ($item['defaultqueue']) {
 		$item_set .= "defaultqueue " . htmlspecialchars($item['defaultqueue']) . " ";
 	}
+	if ($item['tagged']) {
+		if (array_key_exists('nottagged', $item)) {
+			$item_set .= '!';
+		}
+		$item_set .= "tagged " . htmlspecialchars($item['tagged']) . " ";
+	}
 	if ($item['tag']) {
 		$item_set .= "tag " . htmlspecialchars($item['tag']) . " ";
-	}
-	if ($item['tagged']) {
-		$item_set .= "tagged " . htmlspecialchars($item['tagged']) . " ";
 	}
 	if (isset($item['allowopts'])) {
 		$item_set .= "allowopts ";
@@ -525,7 +528,6 @@ function firewall_check_for_advanced_options(&$item) {
 	if ($item['tcpflags_any'] || $item['tcpflags1'] || $item['tcpflags2']) {
 		$item_set .= "tcpflags set";
 	}
-
 	return $item_set;
 }
 
@@ -915,6 +917,29 @@ function add_package_tabs($tabgroup, &$tab_array) {
 	}
 }
 
+function system_alias_info_popup($friendly_interface) {
+	if (empty($friendly_interface)) {
+		return '';
+	}
+
+	$content = [];
+	$alias = escapeshellarg(strtoupper($friendly_interface) . '__NETWORK');
+	exec("/sbin/pfctl -t {$alias} -T show 2>/dev/null", $content);
+
+	$alias_items = [];
+	foreach ($content as $address) {
+		$alias_items[] = trim($address);
+	}
+
+	$content = "<h5>{$alias}</h5>";
+	if (empty($alias_items)) {
+		return $content;
+	}
+
+	$content .= '<ul><li>' . implode('</li><li>', $alias_items) . '</li></ul>';
+	return $content;
+}
+
 function alias_info_popup($alias_id) {
 	global $user_settings;
 
@@ -980,7 +1005,7 @@ function alias_info_popup($alias_id) {
 }
 
 function gateway_info_popup($showgw, $gateways_status = false) {
-	init_config_arr(array('gateways', 'gateway_group'));
+	config_init_path('gateways/gateway_group');
 	/* Get groups indexed by name so we can avoid re-scanning the array
 	 * multiple times later unnecessarily. */
 	$a_gateways = get_gateways(GW_CACHE_DISABLED | GW_CACHE_INACTIVE);
@@ -1014,7 +1039,7 @@ function gateway_info_popup($showgw, $gateways_status = false) {
 		}
 	}
 	$grouptiermap = [];
-	foreach(config_get_path('gateways/gateway_group') as $i => $gwgroup) {
+	foreach(config_get_path('gateways/gateway_group', []) as $i => $gwgroup) {
 		if ($gwgroup['name'] == $showgw) {
 			$groupinfo = [];
 			foreach ($gwgroup['item'] as $member) {
@@ -1036,7 +1061,7 @@ function gateway_info_popup($showgw, $gateways_status = false) {
 					$groupinfo);
 			/* Re-slice member gateways which are now sorted */
 			$gws = array_column($groupinfo, 'gw');
-			$link = "system_gateway_groups_edit.php?id={$i}";
+			$link = "/system_gateway_groups_edit.php?id={$i}";
 			break;
 		}
 	}

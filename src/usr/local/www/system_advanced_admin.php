@@ -221,7 +221,7 @@ $section->addInput(new Form_Input(
 	'althostnames',
 	'Alternate Hostnames',
 	'text',
-	htmlspecialchars($pconfig['althostnames'])
+	$pconfig['althostnames']
 ))->setHelp('Alternate Hostnames for DNS Rebinding and HTTP_REFERER Checks. '.
 	'Specify alternate hostnames by which the router may be queried, to '.
 	'bypass the DNS Rebinding Attack checks. Separate hostnames with spaces.');
@@ -426,6 +426,7 @@ events.push(function() {
 	hideCheckbox('webgui-hsts', $('input[name=webguiproto]:checked').val() == 'http');
 	hideCheckbox('ocsp-staple', "<?php 
 			$cert_temp = lookup_cert($pconfig['ssl-certref']);
+			$cert_temp = $cert_temp['item'];
 			echo (cert_get_ocspstaple($cert_temp['crt']) ? "true" : "false");
 			?>" === "true");
 
